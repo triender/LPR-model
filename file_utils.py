@@ -6,16 +6,16 @@ from typing import Dict
 
 # Giả định các file này nằm cùng cấp thư mục
 from license_plate_utils import normalize_plate, segment_characters
-from test import load_tflite_interpreter, run_cnn_tflite, run_yolo_tflite
+from libert import load_tflite_interpreter, run_cnn_tflite, run_yolo_tflite
 
 # --- CẤU HÌNH ---
 # YOLO_TFLITE_PATH = r"C:\Users\TriNguyen\Desktop\Code\Python\OpenCV\best_float32.tflite"
-YOLO_TFLITE_PATH = r"C:\Users\TriNguyen\Desktop\Code\Python\OpenCV\best416_float32.tflite"
-CNN_TFLITE_PATH = r"C:\Users\TriNguyen\Desktop\Code\Python\OpenCV\character_classifier_int8.tflite"
+YOLO_TFLITE_PATH = "best416_float32.tflite"
+CNN_TFLITE_PATH = "character_classifier_int8.tflite"
 
 # Các file và thư mục khác
 CLASS_NAMES_PATH = 'class_names.txt'
-SOURCE_IMAGE_FOLDER = r'C:\Users\TriNguyen\Desktop\Code\Python\OpenCV\data\images'
+SOURCE_IMAGE_FOLDER = 'test_img'
 
 def benchmark_pipeline(image: np.ndarray, yolo, cnn, classes) -> Dict[str, float]:
     """
@@ -98,7 +98,6 @@ def analyze_component_performance():
 
     # 3. Chạy và thu thập dữ liệu
     all_timings = []
-    count = 0
     for i, filename in enumerate(image_files):
         print(f"   - Đang xử lý ảnh {i + 1}/{total_images}: {filename}", end='\r')
         image_path = os.path.join(SOURCE_IMAGE_FOLDER, filename)
@@ -107,9 +106,6 @@ def analyze_component_performance():
         
         timings = benchmark_pipeline(image, yolo_interpreter, cnn_interpreter, class_names)
         all_timings.append(timings)
-        count += 1
-        if count == 50:
-            break
     
     print("\n\n✅ Đã xử lý xong tất cả các ảnh.")
 
@@ -149,4 +145,5 @@ def analyze_component_performance():
 
 
 if __name__ == '__main__':
+    print("Bắt đầu chạy chương trình")
     analyze_component_performance()

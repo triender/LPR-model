@@ -1,10 +1,12 @@
+# main_litert.py
+
 import os
 import random
 import cv2
 import time
 import numpy as np
-from typing import List, Tuple, Union, Any
-import tensorflow as tf
+from typing import List, Tuple, Union
+from ai_edge_litert.interpreter import Interpreter
 
 # Import các hàm tiện ích
 from license_plate_utils import normalize_plate, segment_characters
@@ -12,27 +14,24 @@ from license_plate_utils import normalize_plate, segment_characters
 # --- CẤU HÌNH ---
 YOLO_TFLITE_PATH = "best224_float32.tflite"
 CNN_TFLITE_PATH = "character_classifier_int8.tflite"
-
-# Các file và thư mục khác
 CLASS_NAMES_PATH = 'class_names.txt'
 SOURCE_IMAGE_FOLDER = 'test_img'
-TARGET_PLATE_WIDTH = 190    
-TARGET_PLATE_HEIGHT = 140
+
 
 # --- CÁC HÀM TIỆN ÍCH CHO TFLITE ---
 
-def load_tflite_interpreter(model_path: str) -> Union[tf.lite.Interpreter, None]:
-    """Tải một model TFLite và khởi tạo Interpreter."""
+def load_tflite_interpreter(model_path: str) -> Union[Interpreter, None]:
+    """Tải một model TFLite và khởi tạo LiteRT Interpreter."""
     try:
-        interpreter = tf.lite.Interpreter(model_path=model_path, num_threads=4)
+        interpreter = Interpreter(model_path=model_path, num_threads=4)
         interpreter.allocate_tensors()
         return interpreter
     except Exception as e:
-        print(f"❌ Lỗi khi tải model TFLite '{model_path}': {e}")
+        print(f"❌ Lỗi khi tải model LiteRT '{model_path}': {e}")
         return None
 
-def run_yolo_tflite(interpreter: tf.lite.Interpreter, image: np.ndarray, conf_threshold=0.6, nms_threshold=0.5) -> List[Tuple[int, int, int, int]]:
-    """Chạy YOLO TFLite để phát hiện biển số và trả về các bounding box."""
+def run_yolo_tflite(interpreter: Interpreter, image: np.ndarray, conf_threshold=0.6, nms_threshold=0.5) -> List[Tuple[int, int, int, int]]:
+    """Chạy YOLO LiteRT để phát hiện biển số và trả về các bounding box."""
     input_details = interpreter.get_input_details()[0]
     output_details = interpreter.get_output_details()[0]
     
@@ -69,8 +68,8 @@ def run_yolo_tflite(interpreter: tf.lite.Interpreter, image: np.ndarray, conf_th
             final_boxes.append((x, y, x + w, y + h))
     return final_boxes
 
-def run_cnn_tflite(interpreter: tf.lite.Interpreter, char_image: np.ndarray, class_names: List[str]) -> str:
-    """Chạy CNN TFLite trên ảnh ký tự và trả về ký tự dự đoán."""
+def run_cnn_tflite(interpreter: Interpreter, char_image: np.ndarray, class_names: List[str]) -> str:
+    """Chạy CNN LiteRT trên ảnh ký tự và trả về ký tự dự đoán."""
     input_details = interpreter.get_input_details()[0]
     output_details = interpreter.get_output_details()[0]
 
@@ -90,11 +89,11 @@ def run_cnn_tflite(interpreter: tf.lite.Interpreter, char_image: np.ndarray, cla
     return class_names[np.argmax(output_data)]
 
 # --- HÀM XỬ LÝ CHÍNH ---
-def process_frame(image: np.ndarray, yolo_interpreter: tf.lite.Interpreter, cnn_interpreter: tf.lite.Interpreter, class_names: List[str]) -> Tuple[np.ndarray, float]:
+def process_frame(image: np.ndarray, yolo_interpreter: Interpreter, cnn_interpreter: Interpreter, class_names: List[str]) -> Tuple[np.ndarray, float]:
     """
     Hàm xử lý một khung hình và trả về ảnh kết quả cùng thời gian xử lý.
     """
-    start_time = time.time()  # Bắt đầu đếm giờ
+    start_time = time.time()
 
     boxes = run_yolo_tflite(yolo_interpreter, image)
     
@@ -110,52 +109,47 @@ def process_frame(image: np.ndarray, yolo_interpreter: tf.lite.Interpreter, cnn_
             recognized_text = ""
             for char_img, _ in char_data_list:
                 predicted_char = run_cnn_tflite(cnn_interpreter, char_img, class_names)
-                    
+                
                 if predicted_char.lower() != 'noise':
                     recognized_text += predicted_char
             
-            # Chỉ vẽ lên ảnh nếu chuỗi nhận dạng không rỗng
             if recognized_text:
                 cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
                 cv2.putText(image, recognized_text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
     
-    end_time = time.time()  # Kết thúc đếm giờ
-    processing_time = end_time - start_time  # Tính thời gian xử lý (giây)
+    end_time = time.time()
+    processing_time = end_time - start_time
     
     return image, processing_time
 
-# --- CÁC CHẾ ĐỘ CHẠY ---
-
+# --- CÁC CHẾ ĐỘ CHẠY --- (Giữ nguyên các hàm run_from_webcam, run_from_folder)
 def run_from_webcam(yolo, cnn, classes):
     """Chạy pipeline từ webcam."""
-    print("\n▶️ Chế độ WEBCAM (TFLite). Nhấn 'q' để thoát.")
-    cap = cv2.VideoCapture(0) # Thử camera 0 (mặc định) trước
+    print("\n▶️ Chế độ WEBCAM (LiteRT). Nhấn 'q' để thoát.")
+    cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         print("❌ Lỗi: Không thể mở webcam. Thử camera 1...")
         cap = cv2.VideoCapture(1)
         if not cap.isOpened():
-             print("❌ Lỗi: Vẫn không thể mở webcam."); return
+            print("❌ Lỗi: Vẫn không thể mở webcam."); return
 
     while True:
         ret, frame = cap.read()
-        if not ret:
-            break
+        if not ret: break
         
-        processed_frame = process_frame(frame, yolo, cnn, classes)
-        cv2.imshow('Webcam TFLite Recognition', processed_frame)
+        processed_frame, _ = process_frame(frame, yolo, cnn, classes)
+        cv2.imshow('Webcam LiteRT Recognition', processed_frame)
         
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+        if cv2.waitKey(1) & 0xFF == ord('q'): break
             
     cap.release()
     cv2.destroyAllWindows()
 
 def run_from_folder(folder_path, yolo, cnn, classes):
     """Chạy pipeline trên một ảnh ngẫu nhiên từ thư mục."""
-    print(f"\n▶️ Chế độ FILE. Chọn ảnh ngẫu nhiên từ '{folder_path}'.")
+    print(f"\n▶️ Chế độ FILE (LiteRT). Chọn ảnh ngẫu nhiên từ '{folder_path}'.")
     if not os.path.isdir(folder_path) or not os.listdir(folder_path):
-        print(f"❌ Lỗi: Thư mục không tồn tại hoặc trống: '{folder_path}'")
-        return
+        print(f"❌ Lỗi: Thư mục không tồn tại hoặc trống: '{folder_path}'"); return
         
     random_img_name = random.choice(os.listdir(folder_path))
     random_img_path = os.path.join(folder_path, random_img_name)
@@ -163,12 +157,11 @@ def run_from_folder(folder_path, yolo, cnn, classes):
     
     image = cv2.imread(random_img_path)
     if image is None:
-        print(f"❌ Lỗi: không thể đọc file ảnh '{random_img_path}'")
-        return
+        print(f"❌ Lỗi: không thể đọc file ảnh '{random_img_path}'"); return
 
     processed_image, proc_time = process_frame(image, yolo, cnn, classes)
     
-    print(f"   - ⏱️ Thời gian nhận diện: {proc_time * 1000:.2f} ms")
+    print(f"   - ⏱️  Thời gian nhận diện: {proc_time * 1000:.2f} ms")
     
     cv2.imshow("File Recognition Result", processed_image)
     cv2.waitKey(0)
@@ -177,6 +170,7 @@ def run_from_folder(folder_path, yolo, cnn, classes):
 # --- HÀM MAIN ---
 def main():
     """Hàm chính: tải model, file nhãn và chạy menu lựa chọn."""
+    # ✅ Thay đổi: Gọi hàm tải model của LiteRT
     yolo_interpreter = load_tflite_interpreter(YOLO_TFLITE_PATH)
     cnn_interpreter = load_tflite_interpreter(CNN_TFLITE_PATH)
     
@@ -191,10 +185,10 @@ def main():
         return
 
     while True:
-        print("\n--- CHỌN CHẾ ĐỘ NHẬN DẠNG (TFLite) ---")
-        print("  1. Nhận dạng từ Webcam")
-        print("  2. Nhận dạng từ File ảnh ngẫu nhiên")
-        print("  Nhấn phím khác để thoát.")
+        print("\n--- CHỌN CHẾ ĐỘ NHẬN DẠNG (LiteRT) ---")
+        print("   1. Nhận dạng từ Webcam")
+        print("   2. Nhận dạng từ File ảnh ngẫu nhiên")
+        print("   Nhấn phím khác để thoát.")
         
         choice = input("Nhập lựa chọn của bạn (1 hoặc 2): ")
         
